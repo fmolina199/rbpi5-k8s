@@ -1,0 +1,332 @@
+// SPDX-License-Identifier: MPL-2.0 OR LGPL-3.0-or-later
+/*
+ * libpathrs: safe path resolution on Linux
+ * Copyright (C) 2019-2025 SUSE LLC
+ * Copyright (C) 2026 Aleksa Sarai <cyphar@cyphar.com>
+ *
+ * == MPL-2.0 ==
+ *
+ *  This Source Code Form is subject to the terms of the Mozilla Public
+ *  License, v. 2.0. If a copy of the MPL was not distributed with this
+ *  file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * Alternatively, this Source Code Form may also (at your option) be used
+ * under the terms of the GNU Lesser General Public License Version 3, as
+ * described below:
+ *
+ * == LGPL-3.0-or-later ==
+ *
+ *  This program is free software: you can redistribute it and/or modify it
+ *  under the terms of the GNU Lesser General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or (at
+ *  your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful, but
+ *  WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY  or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+ * Public License  for more details.
+ *
+ *  You should have received a copy of the GNU Lesser General Public License
+ *  along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#![forbid(unsafe_code)]
+
+//! Bit-flags for modifying the behaviour of libpathrs.
+
+use crate::syscalls;
+
+use bitflags::bitflags;
+use rustix::fs as rustix_fs;
+
+bitflags! {
+    /// Wrapper for the underlying `libc`'s `O_*` flags.
+    ///
+    /// The flag values and their meaning is identical to the description in the
+    /// `open(2)` man page.
+    ///
+    /// # Caveats
+    ///
+    /// For historical reasons, the first three bits of `open(2)`'s flags are
+    /// for the access mode and are actually treated as a 2-bit number. So, it
+    /// is incorrect to attempt to do any checks on the access mode without
+    /// masking it correctly. So some helpers were added to make usage more
+    /// ergonomic.
+    ///
+    /// ```
+    /// # use pathrs::flags::OpenFlags;
+    /// // Using .contains() can lead to confusing behaviour:
+    /// # let ret =
+    /// OpenFlags::O_WRONLY.contains(OpenFlags::O_RDONLY); // returns true!
+    /// # assert!(ret);
+    /// # let ret =
+    /// OpenFlags::O_RDWR.contains(OpenFlags::O_RDONLY); // returns true!
+    /// # assert!(ret);
+    /// # let ret =
+    /// OpenFlags::O_RDWR.contains(OpenFlags::O_WRONLY); // returns false!
+    /// # assert!(!ret);
+    /// // But using the .wants_write() and .wants_read() helpers works:
+    /// assert_eq!(OpenFlags::O_WRONLY.wants_read(), false);
+    /// # #[allow(clippy::bool_assert_comparison)]
+    /// assert_eq!(OpenFlags::O_RDONLY.wants_read(), true);
+    /// # #[allow(clippy::bool_assert_comparison)]
+    /// assert_eq!(OpenFlags::O_RDWR.wants_write(), true);
+    /// // And we also correctly handle O_PATH as being "neither read nor write".
+    /// assert_eq!((OpenFlags::O_PATH | OpenFlags::O_RDWR).access_mode(), None);
+    /// assert_eq!((OpenFlags::O_PATH | OpenFlags::O_RDWR).wants_read(), false);
+    /// assert_eq!((OpenFlags::O_PATH | OpenFlags::O_RDWR).wants_write(), false);
+    /// // As well as the sneaky "implied write" cases.
+    /// assert_eq!((OpenFlags::O_CREAT|OpenFlags::O_RDONLY).wants_write(), true);
+    /// assert_eq!((OpenFlags::O_TRUNC|OpenFlags::O_RDONLY).wants_write(), true);
+    /// ```
+    ///
+    /// Also, if you wish to check for `O_TMPFILE`, make sure to use `contains`.
+    /// `O_TMPFILE` includes `O_DIRECTORY`, so doing `intersection` will match
+    /// `O_DIRECTORY` as well.
+    ///
+    /// ```
+    /// # use pathrs::flags::OpenFlags;
+    /// // O_TMPFILE contains O_DIRECTORY (as a kernel implementation detail).
+    /// # let ret =
+    /// OpenFlags::O_DIRECTORY.intersection(OpenFlags::O_TMPFILE).is_empty(); // returns false!
+    /// # assert!(!ret);
+    /// // Instead, use contains:
+    /// assert_eq!(OpenFlags::O_DIRECTORY.contains(OpenFlags::O_TMPFILE), false);
+    /// ```
+    #[derive(Default, PartialEq, Eq, Debug, Clone, Copy)]
+    pub struct OpenFlags: u64 {
+        // Access modes (including O_PATH).
+        const O_RDWR = libc::O_RDWR as _;
+        const O_RDONLY = libc::O_RDONLY as _;
+        const O_WRONLY = libc::O_WRONLY as _;
+        const O_PATH = libc::O_PATH as _;
+
+        // Fd flags.
+        const O_CLOEXEC = libc::O_CLOEXEC as _;
+
+        // Control lookups.
+        const O_NOFOLLOW = libc::O_NOFOLLOW as _;
+        const O_DIRECTORY = libc::O_DIRECTORY as _;
+        const O_NOCTTY = libc::O_NOCTTY as _;
+
+        // NOTE: This flag contains O_DIRECTORY!
+        const O_TMPFILE = libc::O_TMPFILE as _;
+
+        // File creation.
+        const O_CREAT = libc::O_CREAT as _;
+        const O_EXCL = libc::O_EXCL as _;
+        const O_TRUNC = libc::O_TRUNC as _;
+        const O_APPEND = libc::O_APPEND as _;
+
+        // Sync.
+        const O_SYNC = libc::O_SYNC as _;
+        const O_ASYNC = libc::O_ASYNC as _;
+        const O_DSYNC = libc::O_DSYNC as _;
+        #[cfg(not(target_env = "musl"))] // musl doesn't provide FSYNC
+        const O_FSYNC = libc::O_FSYNC as _;
+        const O_RSYNC = libc::O_RSYNC as _;
+        const O_DIRECT = libc::O_DIRECT as _;
+        const O_NDELAY = libc::O_NDELAY as _;
+        const O_NOATIME = libc::O_NOATIME as _;
+        const O_NONBLOCK = libc::O_NONBLOCK as _;
+
+        // NOTE: This is effectively a kernel-internal flag (auto-set on systems
+        //       with large offset support). glibc defines it as 0, and it is
+        //       also architecture-specific.
+        //const O_LARGEFILE = libc::O_LARGEFILE as _;
+
+        // Don't clobber unknown O_* bits.
+        const _ = !0;
+    }
+}
+
+/// Convert an [`OpenFlags`] set of flags to the [`openat`]-compatible
+/// [`OFlags`]. If the value cannot be converted then `Err(())` is returned.
+///
+/// [`OFlags`]: rustix::fs::OFlags
+// TODO: It might even make sense to make this do an explicit check for O_*
+// flags versus openat2(2)-only flags if we end up having any in the lower
+// bits...
+#[doc(hidden)]
+impl TryFrom<OpenFlags> for rustix_fs::OFlags {
+    // No need for an actual error type, if this fails the meaning is obvious.
+    type Error = ();
+
+    fn try_from(flags: OpenFlags) -> Result<Self, Self::Error> {
+        flags
+            .bits()
+            .try_into()
+            .map(Self::from_bits_retain)
+            .map_err(|_| ())
+    }
+}
+
+impl OpenFlags {
+    /// Grab the access mode bits from the flags.
+    ///
+    /// If the flags contain `O_PATH`, this returns `None`.
+    #[inline]
+    pub fn access_mode(self) -> Option<libc::c_int> {
+        if self.contains(OpenFlags::O_PATH) {
+            None
+        } else {
+            let acc_mode = self.bits() & (libc::O_ACCMODE as u64);
+            debug_assert!(
+                acc_mode <= 0b11,
+                "{:X} masked by O_ACCMODE ({:X}) mask should only set bottom two bits",
+                self.bits(),
+                libc::O_ACCMODE,
+            );
+            Some(acc_mode as _)
+        }
+    }
+
+    /// Does the access mode imply read access?
+    ///
+    /// Returns false for `O_PATH`.
+    #[inline]
+    pub fn wants_read(self) -> bool {
+        match self.access_mode() {
+            None => false, // O_PATH
+            Some(acc) => acc == libc::O_RDONLY || acc == libc::O_RDWR,
+        }
+    }
+
+    /// Does the access mode imply write access? Note that there are several
+    /// other bits in OpenFlags that imply write access other than `O_WRONLY`
+    /// and `O_RDWR`. This function checks those bits as well.
+    ///
+    /// Returns false for `O_PATH`.
+    #[inline]
+    pub fn wants_write(self) -> bool {
+        match self.access_mode() {
+            None => false, // O_PATH
+            Some(acc) => {
+                acc == libc::O_WRONLY
+                    || acc == libc::O_RDWR
+                    // O_CREAT and O_TRUNC are silently ignored with O_PATH.
+                    || self.intersects(OpenFlags::O_TRUNC | OpenFlags::O_CREAT)
+            }
+        }
+    }
+}
+
+bitflags! {
+    /// Wrapper for the underlying `libc`'s `RENAME_*` flags.
+    ///
+    /// The flag values and their meaning is identical to the description in the
+    /// [`renameat2(2)`] man page.
+    ///
+    /// [`renameat2(2)`] might not not be supported on your kernel -- in which
+    /// case [`Root::rename`] will fail if you specify any RenameFlags. You can
+    /// verify whether [`renameat2(2)`] flags are supported by calling
+    /// [`RenameFlags::supported`].
+    ///
+    /// [`renameat2(2)`]: http://man7.org/linux/man-pages/man2/rename.2.html
+    /// [`Root::rename`]: crate::Root::rename
+    #[derive(Default, PartialEq, Eq, Debug, Clone, Copy)]
+    pub struct RenameFlags: u64 {
+        const RENAME_EXCHANGE = libc::RENAME_EXCHANGE as _;
+        const RENAME_NOREPLACE = libc::RENAME_NOREPLACE as _;
+        const RENAME_WHITEOUT = libc::RENAME_WHITEOUT as _;
+
+        // Don't clobber unknown RENAME_* bits.
+        const _ = !0;
+    }
+}
+
+impl From<RenameFlags> for rustix::fs::RenameFlags {
+    fn from(flags: RenameFlags) -> Self {
+        debug_assert!(
+            flags.bits() < (1u64 << 32),
+            "RenameFlags cannot contain anything in the top 32 bits."
+        );
+        Self::from_bits_retain(flags.bits() as _)
+    }
+}
+
+impl RenameFlags {
+    /// Is this set of RenameFlags supported by the running kernel?
+    pub fn is_supported(self) -> bool {
+        // TODO: This check won't work once new RENAME_* flags are added.
+        self.is_empty() || *syscalls::RENAME_FLAGS_SUPPORTED
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        flags::{OpenFlags, RenameFlags},
+        syscalls,
+    };
+
+    macro_rules! openflags_tests {
+        ($($test_name:ident ( $($flag:ident)|+ ) == {accmode: $accmode:expr, read: $wants_read:expr, write: $wants_write:expr} );+ $(;)?) => {
+            $(
+                paste::paste! {
+                    #[test]
+                    fn [<openflags_ $test_name _access_mode>]() {
+                        let flags = $(OpenFlags::$flag)|*;
+                        let accmode: Option<i32> = $accmode;
+                        assert_eq!(flags.access_mode(), accmode, "{flags:?} access mode should be {:?}", accmode.map(|flags| OpenFlags::from_bits_retain(flags as _)));
+                    }
+
+                    #[test]
+                    fn [<openflags_ $test_name _wants_read>]() {
+                        let flags = $(OpenFlags::$flag)|*;
+                        assert_eq!(flags.wants_read(), $wants_read, "{flags:?} wants_read should be {:?}", $wants_read);
+                    }
+
+                    #[test]
+                    fn [<openflags_ $test_name _wants_write>]() {
+                        let flags = $(OpenFlags::$flag)|*;
+                        assert_eq!(flags.wants_write(), $wants_write, "{flags:?} wants_write should be {:?}", $wants_write);
+                    }
+                }
+            )*
+        }
+    }
+
+    openflags_tests! {
+        plain_rdonly(O_RDONLY) == {accmode: Some(libc::O_RDONLY), read: true, write: false};
+        plain_wronly(O_WRONLY) == {accmode: Some(libc::O_WRONLY), read: false, write: true};
+        plain_rdwr(O_RDWR) == {accmode: Some(libc::O_RDWR), read: true, write: true};
+        plain_opath(O_PATH) == {accmode: None, read: false, write: false};
+        rdwr_opath(O_RDWR|O_PATH) == {accmode: None, read: false, write: false};
+        wronly_opath(O_WRONLY|O_PATH) == {accmode: None, read: false, write: false};
+
+        trunc_rdonly(O_RDONLY|O_TRUNC) == {accmode: Some(libc::O_RDONLY), read: true, write: true};
+        trunc_wronly(O_WRONLY|O_TRUNC) == {accmode: Some(libc::O_WRONLY), read: false, write: true};
+        trunc_rdwr(O_RDWR|O_TRUNC) == {accmode: Some(libc::O_RDWR), read: true, write: true};
+        trunc_path(O_PATH|O_TRUNC) == {accmode: None, read: false, write: false};
+
+        creat_rdonly(O_RDONLY|O_CREAT) == {accmode: Some(libc::O_RDONLY), read: true, write: true};
+        creat_wronly(O_WRONLY|O_CREAT) == {accmode: Some(libc::O_WRONLY), read: false, write: true};
+        creat_rdwr(O_RDWR|O_CREAT) == {accmode: Some(libc::O_RDWR), read: true, write: true};
+        creat_path(O_PATH|O_CREAT) == {accmode: None, read: false, write: false};
+    }
+
+    #[test]
+    fn rename_flags_is_supported() {
+        assert!(
+            RenameFlags::empty().is_supported(),
+            "empty flags should be supported"
+        );
+        assert_eq!(
+            RenameFlags::RENAME_EXCHANGE.is_supported(),
+            *syscalls::RENAME_FLAGS_SUPPORTED,
+            "rename flags being supported should be identical to RENAME_FLAGS_SUPPORTED"
+        );
+    }
+}
+
+bitflags! {
+    /// Optional flags to modify the resolution of paths inside a [`Root`].
+    ///
+    /// [`Root`]: crate::Root
+    #[derive(Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
+    pub struct ResolverFlags: u64 {
+        // TODO: We should probably have our own bits...
+        const NO_SYMLINKS = libc::RESOLVE_NO_SYMLINKS;
+    }
+}
