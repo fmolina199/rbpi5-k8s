@@ -1,0 +1,11 @@
+[Unit]
+Description=BuildKit Socket
+Documentation=https://github.com/moby/buildkit
+PartOf=buildkit.service
+
+[Socket]
+ListenStream=%t/buildkit/buildkitd.sock
+SocketMode=0660
+
+[Install]
+WantedBy=sockets.target

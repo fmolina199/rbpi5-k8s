@@ -1,0 +1,3 @@
+[worker.containerd]
+  namespace = "default"
+  networkMode = "bridge"

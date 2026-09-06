@@ -1,0 +1,13 @@
+[Unit]
+Description=BuildKit
+Requires=buildkit.socket
+After=buildkit.socket
+Documentation=https://github.com/moby/buildkit
+
+[Service]
+Type=notify
+Restart=always
+ExecStart=/usr/bin/buildkitd --addr fd:// --containerd-worker=true --oci-worker=false --cdi-disabled
+
+[Install]
+WantedBy=multi-user.target
