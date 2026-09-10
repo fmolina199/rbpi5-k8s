@@ -75,14 +75,20 @@ if [ "$GIT_PULL" -eq "1" ]; then
 fi
 
 # Download files
-echo curl -fSLO "https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/libpathrs-$LIBPATHRS_VERSION.tar.xz"
-echo curl -fSLO "https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/libseccomp-$LIBSECCOMP_VERSION.tar.gz"
-echo curl -fSLO "https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/runc.$MARCH"
-echo curl -fSLO "https://github.com/containerd/containerd/releases/download/v$CONTAINERD_VERSION/containerd-2.3.5-linux-$MARCH.tar.gz"
-echo curl -fSLO https://github.com/containernetworking/plugins/releases/download/v1.9.1/cni-plugins-linux-$MARCH-v1.9.1.tgz
-echo curl -fSLO https://github.com/containerd/nerdctl/releases/download/v2.3.5/nerdctl-2.3.5-linux-$MARCH.tar.gz
-echo curl -fSLO https://github.com/moby/buildkit/releases/download/v0.33.0/buildkit-v0.33.0.linux-$MARCH.tar.gz
+cd bin
+echo "=>Cleaning bin folder..."
+rm -rf *.gz *.tgz *.xz "*.$MARCH"
 
+echo "=> Downloading binaries..."
+curl -fSLO "https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/libpathrs-$LIBPATHRS_VERSION.tar.xz"
+curl -fSLO "https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/libseccomp-$LIBSECCOMP_VERSION.tar.gz"
+curl -fSLO "https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/runc.$MARCH"
+curl -fSLO "https://github.com/containerd/containerd/releases/download/v$CONTAINERD_VERSION/containerd-2.3.5-linux-$MARCH.tar.gz"
+curl -fSLO https://github.com/containernetworking/plugins/releases/download/v1.9.1/cni-plugins-linux-$MARCH-v1.9.1.tgz
+curl -fSLO https://github.com/containerd/nerdctl/releases/download/v2.3.5/nerdctl-2.3.5-linux-$MARCH.tar.gz
+curl -fSLO https://github.com/moby/buildkit/releases/download/v0.33.0/buildkit-v0.33.0.linux-$MARCH.tar.gz
+
+echo "=> Moving binaries..."
 
 #if [ ! -f /etc/modules-load.d/k8s.conf ]; then
 #	echo "=> Creating Modules link..."
@@ -98,4 +104,4 @@ echo curl -fSLO https://github.com/moby/buildkit/releases/download/v0.33.0/build
 #	echo "=> Creating Systemd Containerd link..."
 #	ln -s $BASEDIR/config/systemd-system-containerd.service /etc/systemd/system/containerd.service
 #fi
-
+cd $INIT_PATH
