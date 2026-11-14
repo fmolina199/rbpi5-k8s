@@ -360,7 +360,7 @@ echo "=> Validation..."
 echo "  buildkit.socket: $(systemctl is-active buildkit.socket)"
 echo "  buildkit.service: $(systemctl is-active buildkit.service)"
 echo "  containerd.service:  $(systemctl is-active containerd)"
-echo "  kubelet.service: $(systemctl is-enabled kubelet)"
+echo "  kubelet.service: $(systemctl is-active kubelet)"
 echo "  ip_forward: $(sysctl -n net.ipv4.ip_forward)"
 
 cd "$INIT_PATH"
