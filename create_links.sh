@@ -225,6 +225,7 @@ cd ../..
 
 echo "=> Install libseccomp..."
 cd "libseccomp/$LIBSECCOMP_VERSION"
+./configure
 make
 make install
 cd ../..
