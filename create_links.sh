@@ -5,6 +5,7 @@ set -euo pipefail
 BUILDKIT_VERSION="0.33.0"
 CNI_PLUGINS_VERSION="1.9.1"
 CONTAINERD_VERSION="2.3.5"
+K8S_VERSION="1.37.2"
 LIBPATHRS_VERSION="0.2.5"
 LIBSECCOMP_VERSION="2.6.0"
 NERDCTL_VERSION="2.3.5"
@@ -37,6 +38,8 @@ config/buildkit-buildkitd.toml /etc/buildkit/buildkitd.toml
 config/conteinerd-config.toml /etc/containerd/config.toml
 config/systemd-system-buildkit.service /etc/systemd/system/buildkit.service
 config/systemd-system-buildkit.socket /etc/systemd/system/buildkit.socket
+config/systemd-system-kubelet.service /etc/systemd/system/kubelet.service
+config/kubelet.service.d-10-kubeadm-flags.env /etc/systemd/system/kubelet.service.d/10-kubeadm-flags.env
 bin/cni-plugins/$CNI_PLUGINS_VERSION /opt/cni/bin
 bin/buildkit/$BUILDKIT_VERSION/buildctl /usr/bin/buildctl
 bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-bridge /usr/bin/buildkit-cni-bridge
@@ -57,6 +60,9 @@ bin/containerd/$CONTAINERD_VERSION/containerd-stress /usr/bin/containerd-stress
 bin/containerd/$CONTAINERD_VERSION/ctr /usr/bin/ctr
 bin/nerdctl/$NERDCTL_VERSION/nerdctl /usr/bin/nerdctl
 bin/runc/$RUNC_VERSION/runc.$MARCH /usr/bin/runc
+bin/kubernetes/$K8S_VERSION/kubelet /usr/bin/kubelet
+bin/kubernetes/$K8S_VERSION/kubeadm /usr/bin/kubeadm
+bin/kubernetes/$K8S_VERSION/kubectl /usr/bin/kubectl
 EOF
 }
 
@@ -127,6 +133,7 @@ BASEDIR=$(dirname "$SCRIPT")
 BUILDKIT_FILE="buildkit-v$BUILDKIT_VERSION.linux-$MARCH.tar.gz"
 CNI_PLUGINS_FILE="cni-plugins-linux-$MARCH-v$CNI_PLUGINS_VERSION.tgz"
 CONTAINERD_FILE="containerd-$CONTAINERD_VERSION-linux-$MARCH.tar.gz"
+K8S_FILE="kubernetes-node-linux-$MARCH.tar.gz"
 LIBPATHRS_FILE="libpathrs-$LIBPATHRS_VERSION.tar.xz"
 LIBSECCOMP_FILE="libseccomp-$LIBSECCOMP_VERSION.tar.gz"
 NERDCTL_FILE="nerdctl-$NERDCTL_VERSION-linux-$MARCH.tar.gz"
@@ -175,6 +182,12 @@ if [ -f "$CONTAINERD_FILE" ]; then
 	echo "  => Skipping download (exists): $CONTAINERD_FILE"
 else
 	curl -fSLO "https://github.com/containerd/containerd/releases/download/v$CONTAINERD_VERSION/$CONTAINERD_FILE"
+fi
+
+if [ -f "$K8S_FILE" ]; then
+	echo "  => Skipping download (exists): $K8S_FILE"
+else
+	curl -fSLO "https://dl.k8s.io/v$K8S_VERSION/$K8S_FILE"
 fi
 
 if [ -f "$LIBPATHRS_FILE" ]; then
@@ -243,6 +256,18 @@ else
 	tar xf "$CONTAINERD_FILE"
 	mv "bin" "$CONTAINERD_VERSION"
 	rm "$CONTAINERD_FILE"
+fi
+cd ..
+
+mkdir -p kubernetes
+mv "$K8S_FILE" kubernetes/
+cd kubernetes
+if [ -d "$K8S_VERSION" ]; then
+	echo "  => Skipping extract (exists): $K8S_VERSION"
+else
+	tar xf "$K8S_FILE"
+	mv "server/bin" "$K8S_VERSION"
+	rm "$K8S_FILE"
 fi
 cd ..
 
@@ -316,5 +341,26 @@ while read -r src dst; do
 	ln -s "$BASEDIR/$src" "$dst"
 done < <(link_table)
 
+echo "=> Apply kernel settings..."
+sysctl --system >/dev/null
+modprobe overlay
+systemctl daemon-reload
+
+echo "=> Enable and start buildkit..."
+systemctl enable --now buildkit.socket
+systemctl enable --now buildkit.service
+
+echo "=> Enable and start containerd..."
+systemctl enable --now containerd
+
+echo "=> Enable kubelet..."
+systemctl enable --now kubelet
+
+echo "=> Validation..."
+echo "  buildkit.socket: $(systemctl is-active buildkit.socket)"
+echo "  buildkit.service: $(systemctl is-active buildkit.service)"
+echo "  containerd.service:  $(systemctl is-active containerd)"
+echo "  kubelet.service: $(systemctl is-enabled kubelet)"
+echo "  ip_forward: $(sysctl -n net.ipv4.ip_forward)"
 
 cd "$INIT_PATH"
