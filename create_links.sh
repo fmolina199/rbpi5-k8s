@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -euo pipefail
 
 BUILDKIT_VERSION="0.33.0"
 CNI_PLUGINS_VERSION="1.9.1"
@@ -26,25 +26,21 @@ help_message () {
 	echo
 }
 
-while getopts ":hpa" option; do
+while getopts ":hpa:" option; do
 	case "$option" in
 		p) # Run git pull
 			GIT_PULL=1
-			shift
-			continue
 		;;
 		a) # Machine arch
-			MARCH="$2"
-			shift 2
-			continue
+			MARCH="$OPTARG"
 		;;
 		h) # display Help
 			help_message
 			exit
 		;;
 		\?) # Invalid option
-			echo "Invalid option: $option"
-			echo ""
+			echo "Invalid option: -$option"
+			echo
 			help_message
 			exit 1
 		;;
@@ -62,6 +58,10 @@ case "$MARCH" in
 	;;
 esac
 
+if [ "$EUID" -ne 0 ]; then
+	echo "This script must be run as root."
+	exit 1
+fi
 
 INIT_PATH=$(pwd)
 SCRIPT=$(readlink -f "$0")
@@ -74,9 +74,9 @@ LIBPATHRS_FILE="libpathrs-$LIBPATHRS_VERSION.tar.xz"
 LIBSECCOMP_FILE="libseccomp-$LIBSECCOMP_VERSION.tar.gz"
 NERDCTL_FILE="nerdctl-$NERDCTL_VERSION-linux-$MARCH.tar.gz"
 
-cd $BASEDIR
+cd "$BASEDIR"
 if [ "$GIT_PULL" -eq "1" ]; then
-	echo "=> Updateing repo..."
+	echo "=> Updating repo..."
 	git pull
 fi
 
@@ -91,71 +91,130 @@ fi
 echo "=> Installing dependencies..."
 apt install -y clang lld gperf
 
-echo "=> Cleaning bin folder..."
-rm -rf bin
-
-echo "=> Re-creating bin"
-mkdir bin
+echo "=> Preparing bin folder..."
+mkdir -p bin
 cd bin
 
 echo "=> Downloading binaries..."
-curl -fSLO https://github.com/moby/buildkit/releases/download/v$BUILDKIT_VERSION/$BUILDKIT_FILE
-curl -fSLO https://github.com/containernetworking/plugins/releases/download/v$CNI_PLUGINS_VERSION/$CNI_PLUGINS_FILE
-curl -fSLO "https://github.com/containerd/containerd/releases/download/v$CONTAINERD_VERSION/$CONTAINERD_FILE"
-curl -fSLO "https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/$LIBPATHRS_FILE"
-curl -fSLO "https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/$LIBSECCOMP_FILE"
-curl -fSLO "https://github.com/containerd/nerdctl/releases/download/v$NERDCTL_VERSION/$NERDCTL_FILE"
-curl -fSLO "https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/runc.$MARCH"
+if [ -f "$BUILDKIT_FILE" ]; then
+	echo "  => Skipping download (exists): $BUILDKIT_FILE"
+else
+	curl -fSLO "https://github.com/moby/buildkit/releases/download/v$BUILDKIT_VERSION/$BUILDKIT_FILE"
+fi
+
+if [ -f "$CNI_PLUGINS_FILE" ]; then
+	echo "  => Skipping download (exists): $CNI_PLUGINS_FILE"
+else
+	curl -fSLO "https://github.com/containernetworking/plugins/releases/download/v$CNI_PLUGINS_VERSION/$CNI_PLUGINS_FILE"
+fi
+
+if [ -f "$CONTAINERD_FILE" ]; then
+	echo "  => Skipping download (exists): $CONTAINERD_FILE"
+else
+	curl -fSLO "https://github.com/containerd/containerd/releases/download/v$CONTAINERD_VERSION/$CONTAINERD_FILE"
+fi
+
+if [ -f "$LIBPATHRS_FILE" ]; then
+	echo "  => Skipping download (exists): $LIBPATHRS_FILE"
+else
+	curl -fSLO "https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/$LIBPATHRS_FILE"
+fi
+
+if [ -f "$LIBSECCOMP_FILE" ]; then
+	echo "  => Skipping download (exists): $LIBSECCOMP_FILE"
+else
+	curl -fSLO "https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/$LIBSECCOMP_FILE"
+fi
+
+if [ -f "$NERDCTL_FILE" ]; then
+	echo "  => Skipping download (exists): $NERDCTL_FILE"
+else
+	curl -fSLO "https://github.com/containerd/nerdctl/releases/download/v$NERDCTL_VERSION/$NERDCTL_FILE"
+fi
+
+if [ -f "runc.$MARCH" ]; then
+	echo "  => Skipping download (exists): runc.$MARCH"
+else
+	curl -fSLO "https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/runc.$MARCH"
+fi
 
 echo "=> Moving binaries..."
 mkdir -p libpathrs
 mv "$LIBPATHRS_FILE" libpathrs/
 cd libpathrs
-tar xf "$LIBPATHRS_FILE"
-mv "libpathrs-$LIBPATHRS_VERSION" "$LIBPATHRS_VERSION"
-rm "$LIBPATHRS_FILE"
+if [ -d "$LIBPATHRS_VERSION" ]; then
+	echo "  => Skipping extract (exists): $LIBPATHRS_VERSION"
+else
+	tar xf "$LIBPATHRS_FILE"
+	mv "libpathrs-$LIBPATHRS_VERSION" "$LIBPATHRS_VERSION"
+	rm "$LIBPATHRS_FILE"
+fi
 cd ..
 
 mkdir -p libseccomp
 mv "$LIBSECCOMP_FILE" libseccomp/
 cd libseccomp
-tar xf "$LIBSECCOMP_FILE"
-mv "libseccomp-$LIBSECCOMP_VERSION" "$LIBSECCOMP_VERSION"
-rm "$LIBSECCOMP_FILE"
+if [ -d "$LIBSECCOMP_VERSION" ]; then
+	echo "  => Skipping extract (exists): $LIBSECCOMP_VERSION"
+else
+	tar xf "$LIBSECCOMP_FILE"
+	mv "libseccomp-$LIBSECCOMP_VERSION" "$LIBSECCOMP_VERSION"
+	rm "$LIBSECCOMP_FILE"
+fi
 cd ..
 
 mkdir -p "runc/$RUNC_VERSION"
-chmod +x "runc.$MARCH"
-mv "runc.$MARCH" "runc/$RUNC_VERSION"
+if [ -f "runc/$RUNC_VERSION/runc.$MARCH" ]; then
+	echo "  => Skipping extract (exists): runc/$RUNC_VERSION"
+else
+	chmod +x "runc.$MARCH"
+	mv "runc.$MARCH" "runc/$RUNC_VERSION"
+fi
 
 mkdir -p containerd
-mv "containerd-$CONTAINERD_VERSION-linux-$MARCH.tar.gz" containerd/
+mv "$CONTAINERD_FILE" containerd/
 cd containerd
-tar xf "$CONTAINERD_FILE"
-mv "bin" "$CONTAINERD_VERSION"
-rm "$CONTAINERD_FILE"
+if [ -d "$CONTAINERD_VERSION" ]; then
+	echo "  => Skipping extract (exists): $CONTAINERD_VERSION"
+else
+	tar xf "$CONTAINERD_FILE"
+	mv "bin" "$CONTAINERD_VERSION"
+	rm "$CONTAINERD_FILE"
+fi
 cd ..
 
 mkdir -p "cni-plugins/$CNI_PLUGINS_VERSION"
-mv "$CNI_PLUGINS_FILE" cni-plugins
+mv "$CNI_PLUGINS_FILE" cni-plugins/
 cd cni-plugins
-tar xf "$CNI_PLUGINS_FILE" -C "$CNI_PLUGINS_VERSION"
-rm "$CNI_PLUGINS_FILE"
+if [ -f "$CNI_PLUGINS_VERSION/bridge" ]; then
+	echo "  => Skipping extract (exists): cni-plugins/$CNI_PLUGINS_VERSION"
+else
+	tar xf "$CNI_PLUGINS_FILE" -C "$CNI_PLUGINS_VERSION"
+	rm "$CNI_PLUGINS_FILE"
+fi
 cd ..
 
 mkdir -p "nerdctl/$NERDCTL_VERSION"
 mv "$NERDCTL_FILE" nerdctl/
 cd nerdctl
-tar xf "$NERDCTL_FILE" -C "$NERDCTL_VERSION"
-rm "$NERDCTL_FILE"
+if [ -f "$NERDCTL_VERSION/nerdctl" ]; then
+	echo "  => Skipping extract (exists): nerdctl/$NERDCTL_VERSION"
+else
+	tar xf "$NERDCTL_FILE" -C "$NERDCTL_VERSION"
+	rm "$NERDCTL_FILE"
+fi
 cd ..
 
-mkdir buildkit
+mkdir -p buildkit
 mv "$BUILDKIT_FILE" buildkit/
 cd buildkit
-tar xf "$BUILDKIT_FILE"
-mv "bin" "$BUILDKIT_VERSION"
-rm "$BUILDKIT_FILE"
+if [ -d "$BUILDKIT_VERSION" ]; then
+	echo "  => Skipping extract (exists): $BUILDKIT_VERSION"
+else
+	tar xf "$BUILDKIT_FILE"
+	mv "bin" "$BUILDKIT_VERSION"
+	rm "$BUILDKIT_FILE"
+fi
 cd ..
 
 echo "=> Install libpathrs..."
@@ -173,7 +232,9 @@ cd ../..
 echo "=> Create symlinks..."
 
 while read -r src dst; do
-	[ -z "$src" ] && continue
+	if [ -z "$src" ]; then
+		continue
+	fi
 	if [ -e "$dst" ]; then
 		echo "  => Skipping (already exists): $dst"
 		continue
@@ -192,4 +253,4 @@ config/systemd-system-buildkit.socket /etc/systemd/system/buildkit.socket
 EOF
 
 
-cd $INIT_PATH
+cd "$INIT_PATH"
