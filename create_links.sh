@@ -242,7 +242,7 @@ while read -r src dst; do
 	mkdir -p "$(dirname "$dst")"
 	echo "  => Creating link: $src -> $dst"
 	ln -s "$BASEDIR/$src" "$dst"
-done <<'EOF'
+done <<EOF
 config/modules-load.d-k8s.conf /etc/modules-load.d/k8s.conf
 config/sysctl.d-k8s.conf /etc/sysctl.d/k8s.conf
 config/systemd-system-containerd.service /etc/systemd/system/containerd.service
@@ -250,6 +250,26 @@ config/buildkit-buildkitd.toml /etc/buildkit/buildkitd.toml
 config/conteinerd-config.toml /etc/containerd/config.toml
 config/systemd-system-buildkit.service /etc/systemd/system/buildkit.service
 config/systemd-system-buildkit.socket /etc/systemd/system/buildkit.socket
+bin/cni-plugins/$CNI_PLUGINS_VERSION /opt/cni/bin
+bin/buildkit/$BUILDKIT_VERSION/buildctl /usr/bin/buildctl
+bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-bridge /usr/bin/buildkit-cni-bridge
+bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-firewall /usr/bin/buildkit-cni-firewall
+bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-host-local /usr/bin/buildkit-cni-host-local
+bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-loopback /usr/bin/buildkit-cni-loopback
+bin/buildkit/$BUILDKIT_VERSION/buildkitd /usr/bin/buildkitd
+bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-arm /usr/bin/buildkit-qemu-arm
+bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-i386 /usr/bin/buildkit-qemu-i386
+bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-ppc64le /usr/bin/buildkit-qemu-ppc64le
+bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-riscv64 /usr/bin/buildkit-qemu-riscv64
+bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-s390x /usr/bin/buildkit-qemu-s390x
+bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-x86_64 /usr/bin/buildkit-qemu-x86_64
+bin/buildkit/$BUILDKIT_VERSION/buildkit-runc /usr/bin/buildkit-runc
+bin/containerd/$CONTAINERD_VERSION/containerd /usr/bin/containerd
+bin/containerd/$CONTAINERD_VERSION/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
+bin/containerd/$CONTAINERD_VERSION/containerd-stress /usr/bin/containerd-stress
+bin/containerd/$CONTAINERD_VERSION/ctr /usr/bin/ctr
+bin/nerdctl/$NERDCTL_VERSION/nerdctl /usr/bin/nerdctl
+bin/runc/$RUNC_VERSION/runc.$MARCH /usr/bin/runc
 EOF
 
 
