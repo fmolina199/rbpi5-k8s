@@ -158,33 +158,54 @@ mv "bin" "$BUILDKIT_VERSION"
 rm "$BUILDKIT_FILE"
 cd ..
 
-echo "=> install libpathrs..."
+echo "=> Install libpathrs..."
 cd "libpathrs/$LIBPATHRS_VERSION"
 make release EXTRA_RUSTC_FLAGS="-C linker=clang"
 make install
 cd ../..
 
-echo "=> install libseccomp..."
+echo "=> Install libseccomp..."
 cd "libseccomp/$LIBSECCOMP_VERSION"
 make
 make install
 cd ../..
 
+echo "=> Create symlinks..."
+
+if [ ! -f /etc/modules-load.d/k8s.conf ]; then
+	echo "=> Creating modules link..."
+	ln -s $BASEDIR/config/modules-load.d-k8s.conf /etc/modules-load.d/k8s.conf
+fi
+
+if [ ! -f /etc/sysctl.d/k8s.conf ]; then
+	echo "  => Creating sysctl link..."
+	ln -s $BASEDIR/config/sysctl.d-k8s.conf /etc/sysctl.d/k8s.conf
+fi
+
+if [ ! -f /etc/systemd/system/containerd.service ]; then
+	echo "  => Creating systemd Containerd link..."
+	ln -s $BASEDIR/config/systemd-system-containerd.service /etc/systemd/system/containerd.service
+fi
+
+if [ ! -f /etc/buildkit/buildkitd.toml ]; then
+	echo "  => Creating /etc buildkit link..."
+	ln -s $BASEDIR/config/buildkit-buildkitd.toml /etc/buildkit/buildkitd.toml
+fi
+
+if [ ! -f /etc/containerd/config.toml ]; then
+	echo "  => Creating /etc Containerd link..."
+	ln -s $BASEDIR/config/conteinerd-config.toml /etc/containerd/config.toml
+fi
+
+if [ ! -f /etc/systemd/system/buildkit.service ]; then
+	echo "  => Creating systemd buildkit service link..."
+	ln -s $BASEDIR/config/systemd-system-buildkit.service /etc/systemd/system/buildkit.service
+fi
+
+if [ ! -f /etc/systemd/system/buildkit.socket ]; then
+	echo "  => Creating systemd buildkit socket link..."
+	ln -s $BASEDIR/config/systemd-system-buildkit.socket /etc/systemd/system/buildkit.socket
+fi
 
 
-# -------- HERE
-#if [ ! -f /etc/modules-load.d/k8s.conf ]; then
-#	echo "=> Creating Modules link..."
-#	ln -s $BASEDIR/config/modules-load.d-k8s.conf /etc/modules-load.d/k8s.conf
-#fi
-
-#if [ ! -f /etc/sysctl.d/k8s.conf ]; then
-#	echo "=> Creating Sysctl link..."
-#	ln -s $BASEDIR/config/sysctl.d-k8s.conf /etc/sysctl.d/k8s.conf
-#fi
-
-#if [ ! -f /etc/systemd/system/containerd.service ]; then
-#	echo "=> Creating Systemd Containerd link..."
-#	ln -s $BASEDIR/config/systemd-system-containerd.service /etc/systemd/system/containerd.service
-#fi
 cd $INIT_PATH
