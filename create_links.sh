@@ -266,7 +266,7 @@ if [ -d "$K8S_VERSION" ]; then
 	echo "  => Skipping extract (exists): $K8S_VERSION"
 else
 	tar xf "$K8S_FILE"
-	mv "server/bin" "$K8S_VERSION"
+	mv "kubernetes/node/bin" "$K8S_VERSION"
 	rm "$K8S_FILE"
 fi
 cd ..
