@@ -11,6 +11,7 @@ NERDCTL_VERSION="2.3.5"
 RUNC_VERSION="1.5.1"
 
 GIT_PULL=0
+CLEAN=0
 
 MARCH="arm64"
 
@@ -18,21 +19,77 @@ help_message () {
 	# Display Help
 	echo "Create symbolic links for Raspberry PI5 K8S configuration"
 	echo
-	echo "Syntax: ${0} [-h|-p|-a <arch>]"
+	echo "Syntax: ${0} [-h|-p|-a <arch>|-c]"
 	echo "options:"
 	echo "-h          Print help."
 	echo "-p          Run git pull before running other links."
 	echo "-a <arch>   Machine arch: arm64, amd64. Default: arm64 "
+	echo "-c          Remove bin files and existing symlinks before creating them."
 	echo
 }
 
-while getopts ":hpa:" option; do
+link_table () {
+	cat <<EOF
+config/modules-load.d-k8s.conf /etc/modules-load.d/k8s.conf
+config/sysctl.d-k8s.conf /etc/sysctl.d/k8s.conf
+config/systemd-system-containerd.service /etc/systemd/system/containerd.service
+config/buildkit-buildkitd.toml /etc/buildkit/buildkitd.toml
+config/conteinerd-config.toml /etc/containerd/config.toml
+config/systemd-system-buildkit.service /etc/systemd/system/buildkit.service
+config/systemd-system-buildkit.socket /etc/systemd/system/buildkit.socket
+bin/cni-plugins/$CNI_PLUGINS_VERSION /opt/cni/bin
+bin/buildkit/$BUILDKIT_VERSION/buildctl /usr/bin/buildctl
+bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-bridge /usr/bin/buildkit-cni-bridge
+bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-firewall /usr/bin/buildkit-cni-firewall
+bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-host-local /usr/bin/buildkit-cni-host-local
+bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-loopback /usr/bin/buildkit-cni-loopback
+bin/buildkit/$BUILDKIT_VERSION/buildkitd /usr/bin/buildkitd
+bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-arm /usr/bin/buildkit-qemu-arm
+bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-i386 /usr/bin/buildkit-qemu-i386
+bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-ppc64le /usr/bin/buildkit-qemu-ppc64le
+bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-riscv64 /usr/bin/buildkit-qemu-riscv64
+bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-s390x /usr/bin/buildkit-qemu-s390x
+bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-x86_64 /usr/bin/buildkit-qemu-x86_64
+bin/buildkit/$BUILDKIT_VERSION/buildkit-runc /usr/bin/buildkit-runc
+bin/containerd/$CONTAINERD_VERSION/containerd /usr/bin/containerd
+bin/containerd/$CONTAINERD_VERSION/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
+bin/containerd/$CONTAINERD_VERSION/containerd-stress /usr/bin/containerd-stress
+bin/containerd/$CONTAINERD_VERSION/ctr /usr/bin/ctr
+bin/nerdctl/$NERDCTL_VERSION/nerdctl /usr/bin/nerdctl
+bin/runc/$RUNC_VERSION/runc.$MARCH /usr/bin/runc
+EOF
+}
+
+clean_links () {
+	while read -r src dst; do
+		if [ -z "$src" ]; then
+			continue
+		fi
+		if [ ! -L "$dst" ]; then
+			if [ -e "$dst" ]; then
+				echo "  => Skipping (not a symlink): $dst"
+			fi
+			continue
+		fi
+		if [ -e "$dst" ] && [ "$(readlink "$dst")" != "$BASEDIR/$src" ]; then
+			echo "  => Skipping (foreign symlink -> $(readlink "$dst")): $dst"
+			continue
+		fi
+		echo "  => Removing: $dst"
+		rm -f "$dst"
+	done < <(link_table)
+}
+
+while getopts ":hpa:c" option; do
 	case "$option" in
 		p) # Run git pull
 			GIT_PULL=1
 		;;
 		a) # Machine arch
 			MARCH="$OPTARG"
+		;;
+		c) # Clean bin files and existing symlinks
+			CLEAN=1
 		;;
 		h) # display Help
 			help_message
@@ -90,6 +147,12 @@ fi
 
 echo "=> Installing dependencies..."
 apt install -y clang lld gperf
+
+if [ "$CLEAN" -eq "1" ]; then
+	clean_links
+	echo "=> Removing bin folder..."
+	rm -rf "$BASEDIR/bin"
+fi
 
 echo "=> Preparing bin folder..."
 mkdir -p bin
@@ -236,6 +299,14 @@ while read -r src dst; do
 	if [ -z "$src" ]; then
 		continue
 	fi
+	if [ -L "$dst" ]; then
+		if [ -e "$dst" ]; then
+			echo "  => Skipping (already exists): $dst"
+		else
+			echo "  => Skipping (broken symlink -> $(readlink "$dst")): $dst"
+		fi
+		continue
+	fi
 	if [ -e "$dst" ]; then
 		echo "  => Skipping (already exists): $dst"
 		continue
@@ -243,35 +314,7 @@ while read -r src dst; do
 	mkdir -p "$(dirname "$dst")"
 	echo "  => Creating link: $src -> $dst"
 	ln -s "$BASEDIR/$src" "$dst"
-done <<EOF
-config/modules-load.d-k8s.conf /etc/modules-load.d/k8s.conf
-config/sysctl.d-k8s.conf /etc/sysctl.d/k8s.conf
-config/systemd-system-containerd.service /etc/systemd/system/containerd.service
-config/buildkit-buildkitd.toml /etc/buildkit/buildkitd.toml
-config/conteinerd-config.toml /etc/containerd/config.toml
-config/systemd-system-buildkit.service /etc/systemd/system/buildkit.service
-config/systemd-system-buildkit.socket /etc/systemd/system/buildkit.socket
-bin/cni-plugins/$CNI_PLUGINS_VERSION /opt/cni/bin
-bin/buildkit/$BUILDKIT_VERSION/buildctl /usr/bin/buildctl
-bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-bridge /usr/bin/buildkit-cni-bridge
-bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-firewall /usr/bin/buildkit-cni-firewall
-bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-host-local /usr/bin/buildkit-cni-host-local
-bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-loopback /usr/bin/buildkit-cni-loopback
-bin/buildkit/$BUILDKIT_VERSION/buildkitd /usr/bin/buildkitd
-bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-arm /usr/bin/buildkit-qemu-arm
-bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-i386 /usr/bin/buildkit-qemu-i386
-bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-ppc64le /usr/bin/buildkit-qemu-ppc64le
-bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-riscv64 /usr/bin/buildkit-qemu-riscv64
-bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-s390x /usr/bin/buildkit-qemu-s390x
-bin/buildkit/$BUILDKIT_VERSION/buildkit-qemu-x86_64 /usr/bin/buildkit-qemu-x86_64
-bin/buildkit/$BUILDKIT_VERSION/buildkit-runc /usr/bin/buildkit-runc
-bin/containerd/$CONTAINERD_VERSION/containerd /usr/bin/containerd
-bin/containerd/$CONTAINERD_VERSION/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
-bin/containerd/$CONTAINERD_VERSION/containerd-stress /usr/bin/containerd-stress
-bin/containerd/$CONTAINERD_VERSION/ctr /usr/bin/ctr
-bin/nerdctl/$NERDCTL_VERSION/nerdctl /usr/bin/nerdctl
-bin/runc/$RUNC_VERSION/runc.$MARCH /usr/bin/runc
-EOF
+done < <(link_table)
 
 
 cd "$INIT_PATH"
