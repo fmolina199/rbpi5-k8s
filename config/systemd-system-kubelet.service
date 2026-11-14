@@ -5,7 +5,8 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
-ExecStart=/usr/bin/kubelet
+EnvironmentFile=-/etc/default/kubelet
+ExecStart=/usr/bin/kubelet $KUBELET_EXTRA_ARGS
 Restart=always
 StartLimitInterval=0
 RestartSec=10

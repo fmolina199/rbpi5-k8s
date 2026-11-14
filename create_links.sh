@@ -39,6 +39,7 @@ config/conteinerd-config.toml /etc/containerd/config.toml
 config/systemd-system-buildkit.service /etc/systemd/system/buildkit.service
 config/systemd-system-buildkit.socket /etc/systemd/system/buildkit.socket
 config/systemd-system-kubelet.service /etc/systemd/system/kubelet.service
+config/default-kubelet /etc/default/kubelet
 config/kubelet.service.d-10-kubeadm-flags.env /etc/systemd/system/kubelet.service.d/10-kubeadm-flags.env
 bin/cni-plugins/$CNI_PLUGINS_VERSION /opt/cni/bin
 bin/buildkit/$BUILDKIT_VERSION/buildctl /usr/bin/buildctl
