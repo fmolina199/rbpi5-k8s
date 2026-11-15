@@ -354,6 +354,46 @@ systemctl enable --now buildkit.service
 echo "=> Enable and start containerd..."
 systemctl enable --now containerd
 
+echo "=> Check cgroup memory controller..."
+cmdline="/boot/firmware/cmdline.txt"
+if [ ! -f "$cmdline" ]; then
+	cmdline="/boot/cmdline.txt"
+fi
+required="cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1"
+if [ ! -f "$cmdline" ]; then
+	echo "  => Warning: cmdline file not found, cannot check cgroup_disable=memory"
+else
+	filtered=""
+	for token in $(cat "$cmdline"); do
+		if [ "$token" = "cgroup_disable=memory" ]; then
+			echo "  => Removing cgroup_disable=memory"
+			continue
+		fi
+		filtered="$filtered $token"
+	done
+	for token in $required; do
+		case " $filtered " in
+			*" $token "*) continue ;;
+		esac
+		filtered="$filtered $token"
+		echo "  => Adding $token"
+	done
+	if [ "${filtered# }" != "$(cat "$cmdline")" ]; then
+		cp "$cmdline" "$cmdline.bak"
+		printf '%s\n' "${filtered# }" > "$cmdline"
+		echo "  => cmdline updated (backup: $cmdline.bak)"
+	else
+		echo "  => cmdline OK: no cgroup_disable=memory, required options present"
+	fi
+fi
+if grep -qw memory /sys/fs/cgroup/cgroup.controllers; then
+	echo "  => memory controller available"
+else
+	echo "  => Warning: memory controller not available in this boot."
+	echo "     kubelet cannot create QoS cgroups without it."
+	echo "     Reboot so the firmware reads the updated cmdline.txt."
+fi
+
 echo "=> Enable kubelet..."
 systemctl enable --now kubelet
 
@@ -363,5 +403,6 @@ echo "  buildkit.service: $(systemctl is-active buildkit.service)"
 echo "  containerd.service:  $(systemctl is-active containerd)"
 echo "  kubelet.service: $(systemctl is-active kubelet)"
 echo "  ip_forward: $(sysctl -n net.ipv4.ip_forward)"
+echo "  cgroup memory controller: $(grep -qw memory /sys/fs/cgroup/cgroup.controllers && echo present || echo absent)"
 
 cd "$INIT_PATH"
