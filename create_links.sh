@@ -359,7 +359,7 @@ cmdline="/boot/firmware/cmdline.txt"
 if [ ! -f "$cmdline" ]; then
 	cmdline="/boot/cmdline.txt"
 fi
-required="cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1"
+required="cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1 swapaccount=1"
 if [ ! -f "$cmdline" ]; then
 	echo "  => Warning: cmdline file not found, cannot check cgroup_disable=memory"
 else
