@@ -347,14 +347,14 @@ sysctl --system >/dev/null
 modprobe overlay
 systemctl daemon-reload
 
-echo "=> Enable and start buildkit..."
-systemctl enable --now buildkit.socket
-systemctl enable --now buildkit.service
-
 echo "=> Enable and start containerd..."
 systemctl enable --now containerd
 
 echo "=> Check cgroup memory controller..."
+echo "=> Enable and start buildkit..."
+systemctl enable --now buildkit.socket
+systemctl enable --now buildkit.service
+
 cmdline="/boot/firmware/cmdline.txt"
 if [ ! -f "$cmdline" ]; then
 	cmdline="/boot/cmdline.txt"
