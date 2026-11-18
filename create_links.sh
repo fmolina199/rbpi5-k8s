@@ -35,12 +35,11 @@ config/modules-load.d-k8s.conf /etc/modules-load.d/k8s.conf
 config/sysctl.d-k8s.conf /etc/sysctl.d/k8s.conf
 config/systemd-system-containerd.service /etc/systemd/system/containerd.service
 config/buildkit-buildkitd.toml /etc/buildkit/buildkitd.toml
-config/conteinerd-config.toml /etc/containerd/config.toml
+config/containerd-config.toml /etc/containerd/config.toml
 config/systemd-system-buildkit.service /etc/systemd/system/buildkit.service
 config/systemd-system-buildkit.socket /etc/systemd/system/buildkit.socket
 config/systemd-system-kubelet.service /etc/systemd/system/kubelet.service
 config/default-kubelet /etc/default/kubelet
-config/kubelet.service.d-10-kubeadm-flags.env /etc/systemd/system/kubelet.service.d/10-kubeadm-flags.env
 bin/cni-plugins/$CNI_PLUGINS_VERSION /opt/cni/bin
 bin/buildkit/$BUILDKIT_VERSION/buildctl /usr/bin/buildctl
 bin/buildkit/$BUILDKIT_VERSION/buildkit-cni-bridge /usr/bin/buildkit-cni-bridge
@@ -359,7 +358,7 @@ cmdline="/boot/firmware/cmdline.txt"
 if [ ! -f "$cmdline" ]; then
 	cmdline="/boot/cmdline.txt"
 fi
-required="cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1 swapaccount=1"
+required="cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1 swapaccount=1 ipv6.disable=1"
 if [ ! -f "$cmdline" ]; then
 	echo "  => Warning: cmdline file not found, cannot check cgroup_disable=memory"
 else
