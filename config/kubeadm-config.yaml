@@ -3,53 +3,13 @@ kind: InitConfiguration
 localAPIEndpoint:
   advertiseAddress: 10.8.3.2
   bindPort: 6443
-nodeRegistration:
-  name: cp0
-  criSocket: unix:///var/run/containerd/containerd.sock
-  kubeletExtraArgs:
-    - name: node-ip
-      value: "10.8.3.2"
 ---
 apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 kubernetesVersion: 1.37.2
-controlPlaneEndpoint: "k8s-cp0:6443" #<-- Use the alias we put in /etc/hosts not the IP
+controlPlaneEndpoint: "k8s-cp0:6443"
 networking:
-  serviceSubnet: "10.96.0.0/12"
-  podSubnet: "10.244.0.0/16"
-  dnsDomain: "cluster.local"
-apiServer:
-  extraArgs:
-    - name: bind-address
-      value: "10.8.3.2"
-  certSANs:
-    - "k8s-cp0"
-    - "cp0"
-    - "10.8.3.2"
-    - "127.0.0.1"
-controllerManager:
-  extraArgs:
-    - name: bind-address
-      value: "127.0.0.1"
-    - name: allocate-node-cidrs
-      value: "true"
-    - name: cluster-cidr
-      value: "10.244.0.0/16"
-scheduler:
-  extraArgs:
-    - name: bind-address
-      value: "127.0.0.1"
-etcd:
-  local:
-    extraArgs:
-      - name: listen-client-urls
-        value: "https://127.0.0.1:2379,https://10.8.3.2:2379"
-      - name: advertise-client-urls
-        value: "https://10.8.3.2:2379"
-      - name: listen-peer-urls
-        value: "https://10.8.3.2:2380"
-      - name: initial-advertise-peer-urls
-        value: "https://10.8.3.2:2380"
+  podSubnet: 10.4.0.0/16
 ---
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
@@ -58,10 +18,3 @@ cgroupDriver: systemd
 failSwapOn: false
 memorySwap:
   swapBehavior: LimitedSwap
----
-apiVersion: kubeproxy.config.k8s.io/v1alpha1
-kind: KubeProxyConfiguration
-bindAddress: "0.0.0.0"
-healthzBindAddress: "127.0.0.1:10256"
-metricsBindAddress: "127.0.0.1:10249"
-clusterCIDR: "10.244.0.0/16"

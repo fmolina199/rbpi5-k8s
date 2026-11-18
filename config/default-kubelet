@@ -1,1 +1,1 @@
-KUBELET_EXTRA_ARGS="--fail-swap-on=false --node-ip=10.8.3.2 --address=10.8.3.2"
+KUBELET_EXTRA_ARGS="--fail-swap-on=false"
