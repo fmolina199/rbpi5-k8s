@@ -444,6 +444,12 @@ fi
 echo "=> Enable kubelet..."
 systemctl enable --now kubelet
 
+echo "=> Open necessary ports on firewall"
+ufw allow from 10.8.3.0/24 to any port 6443
+ufw allow from 10.8.3.0/24 to any port 2379
+ufw allow from 10.8.3.0/24 to any port 2380
+ufw allow from 10.8.3.0/24 to any port 10250
+
 echo "=> Validation..."
 echo "  buildkit.socket: $(systemctl is-active buildkit.socket)"
 echo "  buildkit.service: $(systemctl is-active buildkit.service)"
