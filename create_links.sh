@@ -6,6 +6,7 @@ BUILDKIT_VERSION="0.33.0"
 CNI_PLUGINS_VERSION="1.9.1"
 CONTAINERD_VERSION="2.3.5"
 ETCD_VERSION="3.7.4"
+HELM_VERSION="4.3.2"
 K8S_VERSION="1.37.2"
 LIBPATHRS_VERSION="0.2.5"
 LIBSECCOMP_VERSION="2.6.0"
@@ -62,6 +63,7 @@ bin/containerd/$CONTAINERD_VERSION/ctr /usr/bin/ctr
 bin/etcd/$ETCD_VERSION/etcd /usr/bin/etcd
 bin/etcd/$ETCD_VERSION/etcdctl /usr/bin/etcdctl
 bin/etcd/$ETCD_VERSION/etcdutl /usr/bin/etcdutl
+bin/helm/$HELM_VERSION/helm /usr/bin/helm
 bin/nerdctl/$NERDCTL_VERSION/nerdctl /usr/bin/nerdctl
 bin/runc/$RUNC_VERSION/runc.$MARCH /usr/bin/runc
 bin/kubernetes/$K8S_VERSION/kubelet /usr/bin/kubelet
@@ -138,6 +140,7 @@ BUILDKIT_FILE="buildkit-v$BUILDKIT_VERSION.linux-$MARCH.tar.gz"
 CNI_PLUGINS_FILE="cni-plugins-linux-$MARCH-v$CNI_PLUGINS_VERSION.tgz"
 CONTAINERD_FILE="containerd-$CONTAINERD_VERSION-linux-$MARCH.tar.gz"
 ETCD_FILE="etcd-v$ETCD_VERSION-linux-$MARCH.tar.gz"
+HELM_FILE="helm-v$HELM_VERSION-linux-$MARCH.tar.gz"
 K8S_FILE="kubernetes-node-linux-$MARCH.tar.gz"
 LIBPATHRS_FILE="libpathrs-$LIBPATHRS_VERSION.tar.xz"
 LIBSECCOMP_FILE="libseccomp-$LIBSECCOMP_VERSION.tar.gz"
@@ -217,6 +220,12 @@ if [ -f "$NERDCTL_FILE" ]; then
 	echo "  => Skipping download (exists): $NERDCTL_FILE"
 else
 	curl -fSLO "https://github.com/containerd/nerdctl/releases/download/v$NERDCTL_VERSION/$NERDCTL_FILE"
+fi
+
+if [ -f "$HELM_FILE" ]; then
+	echo "  => Skipping download (exists): $HELM_FILE"
+else
+	curl -fSLO "https://get.helm.sh/$HELM_FILE"
 fi
 
 if [ -f "runc.$MARCH" ]; then
@@ -315,6 +324,20 @@ if [ -f "$NERDCTL_VERSION/nerdctl" ]; then
 else
 	tar xf "$NERDCTL_FILE" -C "$NERDCTL_VERSION"
 	rm "$NERDCTL_FILE"
+fi
+cd ..
+
+mkdir -p "helm/$HELM_VERSION"
+mv "$HELM_FILE" helm/
+cd helm
+if [ -f "$HELM_VERSION/helm" ]; then
+	echo "  => Skipping extract (exists): helm/$HELM_VERSION"
+else
+	tar xf "$HELM_FILE"
+	chmod +x "linux-$MARCH/helm"
+	mv "linux-$MARCH/helm" "$HELM_VERSION/helm"
+	rm -rf "linux-$MARCH"
+	rm "$HELM_FILE"
 fi
 cd ..
 
