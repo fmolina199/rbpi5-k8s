@@ -12,6 +12,6 @@ discovery:
       - "sha256:<hash>"
 controlPlane:
   localAPIEndpoint:
-    advertiseAddress: "10.8.3.3"
+    advertiseAddress: "10.8.3.X"
     bindPort: 6443
   certificateKey: "<cert-key>"
